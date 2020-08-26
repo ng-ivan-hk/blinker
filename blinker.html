@@ -1,0 +1,210 @@
+<canvas id="PlayArea" width="1000" height="800" style="border:1px solid blue;">
+</canvas>
+
+
+<script>
+class Blinker
+{
+	constructor(id, size, center)
+	{
+		this.id = id;
+		this.size = size;
+		this.center = center;
+		this.touchingSet = new Set();
+		this.gauge = 0;
+		this.power = 10;
+		this.light = 0;
+	}
+	
+	toString()
+	{
+		return "[" + this.id + "/" + this.size + "/" + this.center.x + "," + this.center.y + "]";
+	}
+}
+
+function distance(x1,y1,x2,y2)
+{
+	var a = x1 - x2;
+	var b = y1 - y2;
+	return Math.sqrt(a*a + b*b);
+}
+var stringToColour = function(str) {
+  var hash = 0;
+  for (var i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  var colour = '#';
+  for (var i = 0; i < 3; i++) {
+    var value = (hash >> (i * 8)) & 0xFF;
+    colour += ('00' + value.toString(16)).substr(-2);
+  }
+  return colour;
+}
+
+function hitBlinkerTest(e)
+{
+	var rect = e.target.getBoundingClientRect();
+	var x = e.clientX - rect.left; //x position within the element.
+	var y = e.clientY - rect.top;  //y position within the element.
+	for (var i = 0; i < blinkers.length; i++)
+	{
+		let blinker = blinkers[i];
+			
+		if (distance(x, y, blinker.center.x, blinker.center.y) <= blinker.size)
+		{
+			return blinker;
+		}
+	}
+	return null;
+}
+
+var blinkers = [];
+for(var i = 0; i < 10; i++)
+{
+	let blinker = new Blinker(i, 50, {x: 50 + 101 * i, y: 50});
+	blinkers.push(blinker);
+}
+
+
+
+var c = document.getElementById("PlayArea");
+var ctx = c.getContext("2d");
+var selectedBlinker = null;
+
+window.oncontextmenu = function (e) //reset blink
+{
+	e.preventDefault();
+	let blinker = hitBlinkerTest(e);
+	if (blinker)
+		blinker.gauge = 0;
+    return false;     // cancel default menu
+}
+c.addEventListener('mousedown', function(e)
+{
+	e.preventDefault();
+	let blinker = hitBlinkerTest(e);
+	if (blinker)
+	{
+		var rect = e.target.getBoundingClientRect();
+		startX = e.clientX - rect.left; //x position within the element.
+		startY = e.clientY - rect.top;  //y position within the element.
+		selectedBlinker = blinker;
+	}
+
+}, false);
+var startX, startY;
+c.addEventListener('mousemove', function(e)
+{
+	e.preventDefault();
+	if (selectedBlinker)
+	{
+		var rect = e.target.getBoundingClientRect();
+		var x = e.clientX - rect.left; //x position within the element.
+		var y = e.clientY - rect.top;  //y position within the element.
+		
+		var dx = x - startX;
+		var dy = y - startY;
+		startX = x;
+		startY = y;
+		
+		selectedBlinker.center.x += dx;
+		selectedBlinker.center.y += dy;
+	}
+
+}, false);
+c.addEventListener('mouseup', function(e)
+{
+	e.preventDefault();
+	let blinker = hitBlinkerTest(e);
+	if (blinker)
+	{
+		 selectedBlinker = null;
+	}
+
+}, false);
+c.addEventListener('mouseout', function(e)
+{
+	e.preventDefault();
+	let blinker = hitBlinkerTest(e);
+	if (blinker)
+	{
+		selectedBlinker = null;
+	}
+
+}, false);
+
+for(var i = 0; i < blinkers.length; i++)
+{
+	(function()
+	{
+		var j = i;
+		setTimeout(function(){ blinkers[j].gauge = 0;}, Math.random() * 500)
+	})();
+	
+}
+
+setInterval(function()
+{
+	//check collision
+	for (var i = 0; i < blinkers.length; i++)
+	{
+		for (var j = 0; j < blinkers.length; j++)
+		{
+			if (i == j) continue;
+			let outerDistance = distance(blinkers[i].center.x, blinkers[i].center.y, blinkers[j].center.x, blinkers[j].center.y) - blinkers[i].size - blinkers[j].size;
+			//console.log(blinkers[i] + " vs " + blinkers[j] + "->distance" + outerDistance);
+			if (outerDistance <= 0) //touching
+			{
+				blinkers[i].touchingSet.add(blinkers[j]);
+				blinkers[j].touchingSet.add(blinkers[i]);
+			}
+			else //not touching
+			{
+				blinkers[i].touchingSet.delete(blinkers[j]);
+				blinkers[j].touchingSet.delete(blinkers[i]);
+			}
+		}
+	}
+	
+	//add gauge
+	for (var i = 0; i < blinkers.length; i++)
+	{
+		blinkers[i].gauge += blinkers[i].power;
+		blinkers[i].light = Math.max(blinkers[i].light - 0.1, 0);
+		if (blinkers[i].gauge >= 1000)
+		{
+			blinkers[i].light = 1;
+			blinkers[i].gauge = 0;
+			
+			//callback touching sets
+			for (var it = blinkers[i].touchingSet.values(), val= null; val=it.next().value; )
+			{
+				//console.log("callback from " + blinkers[i].id + "to" + val.id );
+				val.gauge += parseInt(val.gauge * 0.2);
+			}
+		}
+	}
+	
+	
+	//draw
+	ctx.clearRect(0, 0, c.width, c.height);
+	for (var i = 0; i < blinkers.length; i++)
+	{
+		let blinker = blinkers[i];
+		ctx.beginPath();
+		ctx.arc(blinker.center.x, blinker.center.y, blinker.size, 0, 2 * Math.PI);
+		ctx.fillStyle = "hsl(0, 100%, "  + (100 - 50 * blinkers[i].light)  + "%)";
+		ctx.fill();
+		ctx.stroke();		
+		
+		ctx.font = "10px Arial";
+		ctx.fillStyle = "black";
+		ctx.fillText("id=" + blinker.id  + " g=" + blinker.gauge + " l=" + blinker.light.toFixed(2), blinker.center.x - blinker.size/1.2, blinker.center.y - 20);
+		ctx.fillText(Array.from(blinker.touchingSet).map(x => x.id).join(','), blinker.center.x, blinker.center.y);
+	}
+}, 20);
+
+
+
+
+</script>
